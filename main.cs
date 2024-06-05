@@ -1,167 +1,186 @@
 using System;
-using ConsolePasswordMasker;
-    namespace PasswordMem
+using System.Diagnostics;
+using System.Security;
+using System.Security.Cryptography;
+using System.Text;
+using System.Runtime.InteropServices;
+
+namespace PasswordMemoriser
+{
+    class Program
     {
-        class Program
+        static void Main(string[] args)
         {
-            static PasswordMasker masker = new PasswordMasker();
-            static PasswordMasker masker2 = new PasswordMasker();
-            static void Main(string[] args)
+            Console.WriteLine("Welcome to Password Memoriser!");
+
+            Console.Write("Type in the password you want to memorize: ");
+            SecureString password = MaskInput();
+            if (password.Length == 0)
             {
+                Console.WriteLine("You didn't input a Password...");
+                Console.WriteLine("Press any key to exit...");
+                Console.ReadKey();
+                Environment.Exit(0);
+            }
 
-               string Pass = masker.Mask(loginText:"Type in the password you want to memorise: ", charMask:'*', useBeep: false);
-               int PassLength = Pass.Length;
-                Console.Clear();
-                if (PassLength == 0)
-                {
-                    Console.Write("You didn't input a Password...");
-                    Console.Write(" Press any key to continue...");
-                    Console.Read();
-                    Environment.Exit(0); 
-                }
-                Console.Write($"Your password length is {PassLength} characters long - ");
-                for (int i= 0; PassLength > i; i++)
-                {
-                    Console.Write("*");
-                }
-                Console.Write("\n\nPress Enter to Continue...");
-                Console.ReadKey();             
-                int loop =-1;
-                int c = 0;
-                int w = 0;
-                while(loop != 0)
-                {
-                    string comparePass = masker2.Mask(loginText:"Enter the password again to see if you've typed it in correctly: ", charMask:'*', useBeep: false);
-                    if(comparePass == Pass)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Green;
-                        Console.WriteLine("\nCorrect!\n");
-                        Console.ResetColor();
-                        c++;
-                    }
-                    else
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("\nWrong!\n");
-                        Console.ResetColor();
-                        w++;
+            string hashedPassword = HashPassword(password);
+            int passLength = password.Length;
 
-                    }
-                    Console.Write("Press Enter to Continue... Or type Finish and press Enter to wrap up: ");
-                    string finish = Console.ReadLine();
-                    if (finish.ToLower() == "finish")
-                    {
-                        loop = 0;
-                    }
-                }
+            Console.Clear();
+            string characterText = passLength == 1 ? "character" : "characters";
+            Console.Write($"Your password length is {passLength} {characterText} long - ");
+            Console.WriteLine(new string('*', passLength));
 
-                Console.Write($"\nYou got your Passsword ");
+            Console.WriteLine("\nPress Enter to Continue...");
+            Console.ReadKey();
 
-                for (int i= 0; PassLength > i; i++)
-                {
-                    Console.Write("*");
-                }
-                string t = "";
-               
-                if (c == 1 || w == 1)
-                {
-                    t = "time";
-                }
+            int correctAttempts = 0;
+            int wrongAttempts = 0;
+            int longestStreak = 0;
+            int currentStreak = 0;
+            long totalTime = 0;
+            bool isFinished = false;
 
-                if (c > 1 && w > 1)
-                {
-                    t = "times";
-                }
+            while (!isFinished)
+            {
+                Stopwatch stopwatch = Stopwatch.StartNew();
 
-                int total = c + w;
-                double accuraryCorrectAttempts = c;
-                double accuracyCorrectTotalPercent = 0.0;
-                double accuracyTotalAttempts = total;
-                double accuracyWrongTotalPercent = 0.0;
-                double accuracyWrongAttempts = w;
+                Console.Write("\nEnter the password again to see if you've typed it in correctly: ");
+                SecureString comparePass = MaskInput();
                 
+                stopwatch.Stop();
+                totalTime += stopwatch.ElapsedMilliseconds;
 
-                accuracyCorrectTotalPercent = Math.Round(((accuraryCorrectAttempts / accuracyTotalAttempts) * 100),2);
-                accuracyWrongTotalPercent = Math.Round(((accuracyWrongAttempts / accuracyTotalAttempts) * 100),2);
-                              
-                Console.Write($" Correct ");
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.Write($"{c} ");
-                Console.ResetColor();
-                
-                if (c == 0)
-                {
-                    t = "times";
-                    Console.Write($"{t}, and Wrong ");
-                }
-                else if (c == 1)
-                {
-                    t = "time";
-                    Console.Write($"{t}, and Wrong ");
-                }
-                else
-                {
-                    t = "times";
-                    Console.Write($"{t}, and Wrong ");
-                }
-                if(accuracyWrongAttempts == 0 && accuracyWrongTotalPercent == 0)
+                if (VerifyPassword(comparePass, hashedPassword))
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("\n\nCorrect! Well done.\n");
+                    correctAttempts++;
+                    currentStreak++;
+                    if (currentStreak > longestStreak)
+                    {
+                        longestStreak = currentStreak;
+                    }
                 }
                 else
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("\n\nWrong! Try again.\n");
+                    wrongAttempts++;
+                    currentStreak = 0;
                 }
-                Console.Write($"{w} ");
                 Console.ResetColor();
-                if (w == 0)
-                {
-                    t = "times";
-                    Console.Write($"{t} | Accuracy: ");
-                }
-                else if (w == 1)
-                {
-                    t = "time";
-                    Console.Write($"{t} | Accuracy: ");
-                }
-                else
-                {
-                    t = "times";
-                    Console.Write($"{t} | Accuracy: ");
-                }
 
-                if (accuracyCorrectTotalPercent >= 50)
+                Console.Write("\nPress Enter to Continue... Or type 'finish' and press Enter to wrap up: ");
+                string finish = Console.ReadLine();
+                if (finish.Equals("finish", StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.ForegroundColor = ConsoleColor.Green;
+                    isFinished = true;
                 }
-                else
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                }
+            }
+
+            int totalAttempts = correctAttempts + wrongAttempts;
+            double accuracyCorrectPercent = Math.Round(((double)correctAttempts / totalAttempts) * 100, 2);
+            double accuracyWrongPercent = Math.Round(((double)wrongAttempts / totalAttempts) * 100, 2);
+            double averageTimePerAttempt = Math.Round((double)totalTime / totalAttempts / 1000, 2); // Convert to seconds
+
+            Console.Write($"\nYou got your Password {new string('*', passLength)} Correct {correctAttempts} times, and Wrong {wrongAttempts} times | Accuracy: ");
             
-                Console.Write($"{accuracyCorrectTotalPercent}% ");
-                Console.ResetColor();
-                Console.Write($"Correct and ");
-                if(accuracyWrongAttempts == 0 && accuracyWrongTotalPercent == 0)
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Write($"{accuracyCorrectPercent}% Correct");
+            Console.ResetColor();
+            Console.Write(", and ");
+
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Write($"{accuracyWrongPercent}% Wrong...");
+            Console.ResetColor();
+
+            // Display additional metrics
+            Console.Write("\n\nAverage Time per Attempt: ");
+            if (averageTimePerAttempt < 10)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+            }
+            Console.Write($"{averageTimePerAttempt} seconds");
+            Console.ResetColor();
+
+            Console.Write("\nLongest Streak of Correct Attempts: ");
+            if (longestStreak >= 7)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+            }
+            Console.WriteLine($"{longestStreak}");
+            Console.ResetColor();
+
+            Console.WriteLine("\n\nThank you for using Password Memoriser. Press any key to exit...");
+            Console.ReadKey();
+        }
+
+        static SecureString MaskInput()
+        {
+            SecureString secureString = new SecureString();
+            ConsoleKeyInfo key;
+
+            do
+            {
+                key = Console.ReadKey(true);
+                if (key.Key != ConsoleKey.Backspace && key.Key != ConsoleKey.Enter)
                 {
-                    Console.ForegroundColor = ConsoleColor.Green;
+                    secureString.AppendChar(key.KeyChar);
+                    Console.Write("*");
                 }
-                else
+                else if (key.Key == ConsoleKey.Backspace && secureString.Length > 0)
                 {
-                    Console.ForegroundColor = ConsoleColor.Red;
+                    secureString.RemoveAt(secureString.Length - 1);
+                    Console.Write("\b \b");
                 }
-                Console.Write($"{accuracyWrongTotalPercent}% ");
-                Console.ResetColor();
-                if(accuracyWrongAttempts == 0 && accuracyWrongTotalPercent == 0)
+            } while (key.Key != ConsoleKey.Enter);
+
+            Console.WriteLine();
+            secureString.MakeReadOnly();
+            return secureString;
+        }
+
+        static string HashPassword(SecureString password)
+        {
+            IntPtr passwordBSTR = IntPtr.Zero;
+            try
+            {
+                passwordBSTR = Marshal.SecureStringToBSTR(password);
+                string passwordString = Marshal.PtrToStringBSTR(passwordBSTR);
+
+                using (SHA256 sha256Hash = SHA256.Create())
                 {
-                    Console.Write($"Wrong!");
+                    byte[] bytes = sha256Hash.ComputeHash(Encoding.UTF8.GetBytes(passwordString));
+                    StringBuilder builder = new StringBuilder();
+                    for (int i = 0; i < bytes.Length; i++)
+                    {
+                        builder.Append(bytes[i].ToString("x2"));
+                    }
+                    return builder.ToString();
                 }
-                else
+            }
+            finally
+            {
+                if (passwordBSTR != IntPtr.Zero)
                 {
-                    Console.Write($"Wrong...");
+                    Marshal.ZeroFreeBSTR(passwordBSTR);
                 }
-                Console.WriteLine("\n\nPress any key to Continue...");
-                Console.Read();
             }
         }
+
+        static bool VerifyPassword(SecureString password, string hashedPassword)
+        {
+            string hashedInput = HashPassword(password);
+            return hashedInput.Equals(hashedPassword, StringComparison.OrdinalIgnoreCase);
+        }
     }
+}
