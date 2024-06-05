@@ -1,15 +1,58 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Net;
+using System.Net.WebSockets;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
-using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace PasswordMemoriser
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
+        {
+            string mode = Environment.GetEnvironmentVariable("RUN_MODE") ?? "normal";
+
+            if (mode == "websocket")
+            {
+                await RunWebSocketMode();
+            }
+            else
+            {
+                RunConsoleMode();
+            }
+        }
+
+        static async Task RunWebSocketMode()
+        {
+            string url = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://*:5000/";
+            HttpListener listener = new HttpListener();
+            listener.Prefixes.Add(url);
+            listener.Start();
+            Console.WriteLine("Listening on " + url);
+
+            while (true)
+            {
+                HttpListenerContext context = await listener.GetContextAsync();
+                if (context.Request.IsWebSocketRequest)
+                {
+                    HttpListenerWebSocketContext wsContext = await context.AcceptWebSocketAsync(null);
+                    WebSocket webSocket = wsContext.WebSocket;
+                    await HandleWebSocketConnection(webSocket);
+                }
+                else
+                {
+                    context.Response.StatusCode = 400;
+                    context.Response.Close();
+                }
+            }
+        }
+
+        static void RunConsoleMode()
         {
             Console.WriteLine("Welcome to Password Memoriser!");
 
@@ -124,6 +167,22 @@ namespace PasswordMemoriser
             Console.ReadKey();
         }
 
+        static async Task HandleWebSocketConnection(WebSocket webSocket)
+        {
+            byte[] buffer = new byte[1024];
+            var session = new PasswordMemoriserSession();
+
+            while (webSocket.State == WebSocketState.Open)
+            {
+                WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                string receivedMessage = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                string responseMessage = session.ProcessInput(receivedMessage);
+
+                byte[] responseBytes = Encoding.UTF8.GetBytes(responseMessage);
+                await webSocket.SendAsync(new ArraySegment<byte>(responseBytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            }
+        }
+
         static SecureString MaskInput()
         {
             SecureString secureString = new SecureString();
@@ -178,6 +237,110 @@ namespace PasswordMemoriser
         }
 
         static bool VerifyPassword(SecureString password, string hashedPassword)
+        {
+            string hashedInput = HashPassword(password);
+            return hashedInput.Equals(hashedPassword, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    public class PasswordMemoriserSession
+    {
+        private SecureString password;
+        private string hashedPassword;
+        private int passLength;
+        private int correctAttempts;
+        private int wrongAttempts;
+        private int longestStreak;
+        private int currentStreak;
+        private long totalTime;
+        private bool isFinished;
+        private bool isPasswordSet;
+
+        public PasswordMemoriserSession()
+        {
+            correctAttempts = 0;
+            wrongAttempts = 0;
+            longestStreak = 0;
+            currentStreak = 0;
+            totalTime = 0;
+            isFinished = false;
+            isPasswordSet = false;
+        }
+
+        public string ProcessInput(string input)
+        {
+            if (!isPasswordSet)
+            {
+                password = new SecureString();
+                foreach (char c in input)
+                {
+                    password.AppendChar(c);
+                }
+                password.MakeReadOnly();
+                hashedPassword = HashPassword(password);
+                passLength = password.Length;
+                isPasswordSet = true;
+                return "Password set! Your password length is " + passLength + " characters long - " + new string('*', passLength) + "\nPress Enter to Continue...\n";
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            var comparePass = new SecureString();
+            foreach (char c in input)
+            {
+                comparePass.AppendChar(c);
+            }
+            comparePass.MakeReadOnly();
+
+            stopwatch.Stop();
+            totalTime += stopwatch.ElapsedMilliseconds;
+
+            if (VerifyPassword(comparePass, hashedPassword))
+            {
+                correctAttempts++;
+                currentStreak++;
+                if (currentStreak > longestStreak)
+                {
+                    longestStreak = currentStreak;
+                }
+                return "\n\nCorrect! Well done.\nPress Enter to Continue... Or type 'finish' and press Enter to wrap up: ";
+            }
+            else
+            {
+                wrongAttempts++;
+                currentStreak = 0;
+                return "\n\nWrong! Try again.\nPress Enter to Continue... Or type 'finish' and press Enter to wrap up: ";
+            }
+        }
+
+        private string HashPassword(SecureString password)
+        {
+            IntPtr passwordBSTR = IntPtr.Zero;
+            try
+            {
+                passwordBSTR = Marshal.SecureStringToBSTR(password);
+                string passwordString = Marshal.PtrToStringBSTR(passwordBSTR);
+
+                using (SHA256 sha256Hash = SHA256.Create())
+                {
+                    byte[] bytes = sha256Hash.ComputeHash(Encoding.UTF8.GetBytes(passwordString));
+                    StringBuilder builder = new StringBuilder();
+                    for (int i = 0; i < bytes.Length; i++)
+                    {
+                        builder.Append(bytes[i].ToString("x2"));
+                    }
+                    return builder.ToString();
+                }
+            }
+            finally
+            {
+                if (passwordBSTR != IntPtr.Zero)
+                {
+                    Marshal.ZeroFreeBSTR(passwordBSTR);
+                }
+            }
+        }
+
+        private bool VerifyPassword(SecureString password, string hashedPassword)
         {
             string hashedInput = HashPassword(password);
             return hashedInput.Equals(hashedPassword, StringComparison.OrdinalIgnoreCase);
